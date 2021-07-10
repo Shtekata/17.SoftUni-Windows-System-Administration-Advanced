@@ -1,0 +1,107 @@
+$SourceVHD = 'C:\BAK\WIN-SRV-2K19-ST-DE.vhdx'
+$TargetFolder = 'C:\VM\'
+$Password = ConvertTo-SecureString -AsPlainText "Password1" -Force
+$LocalUser = "Administrator" 
+$LC = New-Object System.Management.Automation.PSCredential($LocalUser, $Password)
+$Domain = "WSAA.LAB"
+$DomainUser = "$Domain\Administrator" 
+$DC = New-Object System.Management.Automation.PSCredential($DomainUser, $Password)
+$VM4 = 'HWM2'
+$VM5 = 'EM1'
+New-VHD -Path ($TargetFolder + $VM4 + ".vhdx") -ParentPath $SourceVHD -Differencing
+New-VHD -Path ($TargetFolder + $VM5 + ".vhdx") -ParentPath $SourceVHD -Differencing
+New-VM -Name $VM4 -MemoryStartupBytes 2048mb -VHDPath ($TargetFolder + $VM4 + ".vhdx") -Generation 2 -SwitchName "NAT vSwitch" | Set-VM -CheckpointType Production -AutomaticCheckpointsEnabled $false -PassThru | Set-VMMemory -DynamicMemoryEnabled $false
+New-VM -Name $VM5 -MemoryStartupBytes 2048mb -VHDPath ($TargetFolder + $VM5 + ".vhdx") -Generation 2 -SwitchName "NAT vSwitch" | Set-VM -CheckpointType Production -AutomaticCheckpointsEnabled $false -PassThru | Set-VMMemory -DynamicMemoryEnabled $false
+Start-VM -Name $VM4, $VM5
+Invoke-Command -VMName $VM4 -Credential $LC -ScriptBlock { Rename-Computer -NewName SERVER3 -Restart  }
+Invoke-Command -VMName $VM5 -Credential $LC -ScriptBlock { Rename-Computer -NewName SERVER4 -Restart  }
+Invoke-Command -VMName $VM4 -Credential $LC -ScriptBlock { New-NetIPAddress -InterfaceAlias "Ethernet" -IPAddress "192.168.99.103" -PrefixLength 24 -DefaultGateway 192.168.99.1 ; Set-DnsClientServerAddress -InterfaceAlias "Ethernet" -ServerAddresses 192.168.99.2 }
+Invoke-Command -VMName $VM5 -Credential $LC -ScriptBlock { New-NetIPAddress -InterfaceAlias "Ethernet" -IPAddress "192.168.99.104" -PrefixLength 24 -DefaultGateway 192.168.99.1 ; Set-DnsClientServerAddress -InterfaceAlias "Ethernet" -ServerAddresses 192.168.99.2 }
+Invoke-Command -VMName $VM4, $VM5 -Credential $LC -ScriptBlock { Add-Computer -DomainName $args[0] -Credential $args[1] -Restart } -ArgumentList $Domain, $DC
+New-VHD -Path C:\VM\HWM2-D1.vhdx -SizeBytes 10gb -Dynamic
+New-VHD -Path C:\VM\HWM2-D2.vhdx -SizeBytes 10gb -Dynamic
+New-VHD -Path C:\VM\HWM2-D3.vhdx -SizeBytes 20gb -Dynamic
+New-VHD -Path C:\VM\HWM2-D4.vhdx -SizeBytes 20gb -Dynamic
+Add-VMHardDiskDrive -VMName HWM2 -Path C:\VM\HWM2-D1.vhdx
+Add-VMHardDiskDrive -VMName HWM2 -Path C:\VM\HWM2-D2.vhdx
+Add-VMHardDiskDrive -VMName HWM2 -Path C:\VM\HWM2-D3.vhdx
+Add-VMHardDiskDrive -VMName HWM2 -Path C:\VM\HWM2-D4.vhdx
+
+In HWM2 machine:
+
+Get-PhysicalDisk | Where CanPool -Eq True | Select UniqueId, MediaType, Size
+Set-PhysicalDisk -UniqueId 6002248028ECEB1B9550C79B7547D356 -MediaType SSD
+Set-PhysicalDisk -UniqueId 6002248040C77D78483972F2A140697E -MediaType SSD
+Set-PhysicalDisk -UniqueId 60022480CCD0C04BEFF6608BD68C0FD1 -MediaType HDD
+Set-PhysicalDisk -UniqueId 60022480FE8767BADC0E39AFF642DB48 -MediaType HDD
+Get-PhysicalDisk | Where CanPool -Eq True | Select UniqueId, MediaType, Size
+
+Created Server4&5PrivateSwitch private switch.
+Both network adapters on machine HWM2 and EM1 are connected to the private switch.
+Have static IP addresses 192.168.10.100 and 192.168.10.101 in one and the same private network.
+
+Navigate to File and Storage Services on HWM2 machine and then to Storage Pools.
+Clicked on New Storage Pool in the Task menu.
+Entered TieredPool in the Name field.
+Selected the four disks (two SSDs and two HDDs) .
+Clicked Create, Close.
+
+Selected the newly created pool and right-clicked on it and selected New Virtual Disk.
+Entered TieredDisk in the Name field, selected the Create storage tiers on this virtual disk option.
+On the Enclosure Awareness screen clicked Next.
+On the Storage Layout screen selected for example Mirror.
+Set Maximim size for the faster and standard tier.
+Next, the New Volume Wizard starts.
+Marked TieredDisk.
+On Size clicked next.
+On Drive Letter select X.
+On File System Settings select Allocation unit size - 64K.
+Then Create and Close.
+
+Start Server Manager and go to Manage and click on Add Roles and Features on HWM2 machine.
+In Server Roles/File and Storage Services/File and iSCSI Services selected iSCSI Target Server.
+Then Add Features, Install and Close.
+
+Opened Server Manager and clicked on iSCSI Initiator under Tools on EM1 machine.
+Then clicked Yes and switched to Discovery tab.
+Clicked on the Discover Portal button.
+In the IP address or DNS name field entered the IP address of our future target – SERVER4 – 192.168.10.100.
+Clicked on Advanced button.
+Changed Local adapter to Microsoft iSCSI Initiator.
+Select 192.168.10.101 in the Initiator IP drop-down list.
+Clicked OK to close the Advanced Settings window.
+Clicked OK to close the Discovery Target Portal window.
+
+Opened the Server Manager and navigated to File and Storage Services on HWM2 machine.
+Then selected iSCSI.
+Clicked on New iSCSI Virtual Disk option under the Tasks drop-down list.
+Selected drive X.
+Entered iSCSIDisk1 in the Name field.
+Selected 10GB on size prompt.
+New target is selected.
+Entered RemoteDisk in the Name field.
+On the Access Servers screen clicked on the Add button.
+Select from the initiator cache on the target server option and mark the record there. Clicked OK.
+Clicked next, next, Create and Close.
+
+In the Targets tab on EM1 machine clicked on the Refresh button.
+Selected inactive record and clicked on Connect.
+Then click on Advanced and selected the correct adapter (Microsoft iSCSI Initiator), initiator IP (192.168.10.101) and target IP (192.168.10.101).
+Clicked Ok, Ok and switch to Volumes and Devices tab and clicked on Auto Configure.
+Then again clicked Ok.
+
+Goes to Disk Management tool and right clicked on Disk1.
+Selected online and then initialize.
+With right click again activated New Simple Volume Wizard.
+Then next, next and selected Assign the following drive letter S.
+Entered Volume label iSCSI and finish.
+
+Created folder 'Shared Data' in S drive.
+With right click goes to properties and select Sharing.
+Then clicked on Advanced Sharing, select 'Share this folder' and clicked on Permissions.
+Selected is Everyone and select Full Control permissions.
+Then Ok, Ok and select Security sections.
+Clicked Edit, then Add and enter 'Domain Admins'.
+Clicked Check Names, Ok, checked Full control, Ok.
+Then again clicked Edit, then Add and enter 'Domain Users'.
+Clicked Check Names, Ok, checked Read, Ok and Close.
