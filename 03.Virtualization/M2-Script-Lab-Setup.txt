@@ -1,5 +1,5 @@
 #
-# Lab Environment for WSAA 2021.06 - М1
+# Lab Environment for WSAA 2021.06 - М2
 #
 
 # General constants/variables
@@ -17,9 +17,9 @@ $DomainUser = "$Domain\Administrator"
 $DC = New-Object System.Management.Automation.PSCredential($DomainUser, $Password)
 
 # VM Names
-$VM1 = 'WSAA-M1-VM-DC'
-$VM2 = 'WSAA-M1-VM-S1'
-
+$VM1 = 'WSAA-M2-VM-DC'
+$VM2 = 'WSAA-M2-VM-S1'
+$VM3 = 'WSAA-M2-VM-S2'
 
 # Option 1: Clone VHDs
 # cp $SourceVHD ($TargetFolder + $VM1 + ".vhdx") 
@@ -32,9 +32,9 @@ New-VHD -Path ($TargetFolder + $VM2 + ".vhdx") -ParentPath $SourceVHD -Differenc
 New-VHD -Path ($TargetFolder + $VM3 + ".vhdx") -ParentPath $SourceVHD -Differencing
 
 # Create VMs (with automatic checkpoints turned off and no dynamic memory)
-New-VM -Name $VM1 -MemoryStartupBytes 2048mb -VHDPath ($TargetFolder + $VM1 + ".vhdx") -Generation 2 -SwitchName "NAT vSwitch" | Set-VM -CheckpointType Production -AutomaticCheckpointsEnabled $false -PassThru | Set-VMMemory -DynamicMemoryEnabled $false
-New-VM -Name $VM2 -MemoryStartupBytes 2048mb -VHDPath ($TargetFolder + $VM2 + ".vhdx") -Generation 2 -SwitchName "NAT vSwitch" | Set-VM -CheckpointType Production -AutomaticCheckpointsEnabled $false -PassThru | Set-VMMemory -DynamicMemoryEnabled $false
-New-VM -Name $VM3 -MemoryStartupBytes 2048mb -VHDPath ($TargetFolder + $VM3 + ".vhdx") -Generation 2 -SwitchName "NAT vSwitch" | Set-VM -CheckpointType Production -AutomaticCheckpointsEnabled $false -PassThru | Set-VMMemory -DynamicMemoryEnabled $false
+New-VM -Name $VM1 -MemoryStartupBytes 1536mb -VHDPath ($TargetFolder + $VM1 + ".vhdx") -Generation 2 -SwitchName "NAT vSwitch" | Set-VM -CheckpointType Production -AutomaticCheckpointsEnabled $false -PassThru | Set-VMMemory -DynamicMemoryEnabled $false
+New-VM -Name $VM2 -MemoryStartupBytes 3072mb -VHDPath ($TargetFolder + $VM2 + ".vhdx") -Generation 2 -SwitchName "NAT vSwitch" | Set-VM -CheckpointType Production -AutomaticCheckpointsEnabled $false -PassThru | Set-VMMemory -DynamicMemoryEnabled $false
+New-VM -Name $VM3 -MemoryStartupBytes 3072mb -VHDPath ($TargetFolder + $VM3 + ".vhdx") -Generation 2 -SwitchName "NAT vSwitch" | Set-VM -CheckpointType Production -AutomaticCheckpointsEnabled $false -PassThru | Set-VMMemory -DynamicMemoryEnabled $false
 
 # Start VMs
 Start-VM -Name $VM1, $VM2, $VM3
@@ -67,3 +67,30 @@ Invoke-Command -VMName $VM1 -Credential $DC -ScriptBlock { New-ADUser -Name "Adm
 
 # Create additional user with no administrative privileges
 Invoke-Command -VMName $VM1 -Credential $DC -ScriptBlock { New-ADUser -Name "Regular User" -AccountPassword $args[0] -DisplayName "Regular User" -Enabled $true -GivenName Regular -Surname User -UserPrincipalName regular.user@wsaa.lab -SamAccountName regular.user } -ArgumentList $Password
+
+
+# 
+# Extra steps
+# 
+# Note that:
+# - they (as the ones before) can be executed manually either using the script or not
+# - can be further extended
+#
+
+# Prepare the two Hyper-V servers (SERVER1 and SERVER2)
+
+# Stop machines as they must be in power off state
+Stop-VM -Name $VM2, $VM3
+
+# Prepare Hyper-V VMs for nested virtualization
+Set-VMMemory -VMName $VM2, $VM3 -DynamicMemoryEnabled $false 
+Set-VMProcessor -VMName $VM2, $VM3 -ExposeVirtualizationExtensions $true
+Get-VMNetworkAdapter -VMName $VM2, $VM3 | Set-VMNetworkAdapter -MacAddressSpoofing On
+
+# Start VMs
+Start-VM -Name $VM2, $VM3
+
+pause
+
+# Install Hyper-V role on both Hyper-V VMs (machines must be in power on state)
+Invoke-Command -VMName $VM2, $VM3 -Credential $DC -ScriptBlock { Install-WindowsFeature Hyper-V -IncludeManagementTools -Restart }
