@@ -1,0 +1,49 @@
+$SourceVHD = 'C:\BAK\WIN-SRV-2K19-ST-DE.vhdx'
+$TargetFolder = 'C:\VM\'
+
+$Password = ConvertTo-SecureString -AsPlainText "Password1" -Force
+$LocalUser = "Administrator" 
+$LC = New-Object System.Management.Automation.PSCredential($LocalUser, $Password)
+
+$Domain = "WSAA.LAB"
+$DomainUser = "$Domain\Administrator" 
+$DC = New-Object System.Management.Automation.PSCredential($DomainUser, $Password)
+
+$VM4 = 'WSAA-M3-VM-S3'
+New-VHD -Path ($TargetFolder + $VM4 + ".vhdx") -ParentPath $SourceVHD -Differencing
+New-VM -Name $VM4 -MemoryStartupBytes 3072mb -VHDPath ($TargetFolder + $VM4 + ".vhdx") -Generation 2 -SwitchName "NAT vSwitch" | Set-VM -CheckpointType Production -AutomaticCheckpointsEnabled $false -PassThru | Set-VMMemory -DynamicMemoryEnabled $false
+Start-VM -Name $VM4
+
+pause
+
+Invoke-Command -VMName $VM4 -Credential $LC -ScriptBlock { Rename-Computer -NewName SERVER3 -Restart  }
+Invoke-Command -VMName $VM4 -Credential $LC -ScriptBlock { New-NetIPAddress -InterfaceAlias "Ethernet" -IPAddress "192.168.99.102" -PrefixLength 24 -DefaultGateway 192.168.99.1 ; Set-DnsClientServerAddress -InterfaceAlias "Ethernet" -ServerAddresses ("192.168.99.2", "8.8.8.8") }
+Invoke-Command -VMName $VM4 -Credential $LC -ScriptBlock { Add-Computer -DomainName $args[0] -Credential $args[1] -Restart } -ArgumentList $Domain, $DC
+
+Stop-VM -Name $VM4
+Set-VMMemory -VMName $VM4 -DynamicMemoryEnabled $false 
+Set-VMProcessor -VMName $VM4 -ExposeVirtualizationExtensions $true
+Get-VMNetworkAdapter -VMName $VM4 | Set-VMNetworkAdapter -MacAddressSpoofing On
+Start-VM -Name $VM4
+
+#In $VM4 PowerShell session
+Install-WindowsFeature Containers, Hyper-V -IncludeManagementTools -Restart
+Install-Module -Name DockerMsftProvider -Repository PSGallery -Force 
+Install-Package -Name Docker -ProviderName DockerMsftProvider
+Start-Service docker
+
+docker run -dp 9000:80 --name web1 mcr.microsoft.com/windows/servercore/iis
+
+mkdir C:\image
+mkdir C:\image\web
+
+'<h1>Hello!</h1>'|Out-File C:\image\web\index.html
+
+'FROM mcr.microsoft.com/windows/servercore/iis
+RUN powershell -NoProfile -Command Remove-Item -Recurse C:\inetpub\wwwroot\*
+WORKDIR /inetpub/wwwroot
+COPY C:/image/web/ .'|Out-File C:\image\Dockerfile
+
+docker build -t custom-iis:v1 C:\image\
+docker run -dp 8080:80 --name web2 custom-iis:v1
+
