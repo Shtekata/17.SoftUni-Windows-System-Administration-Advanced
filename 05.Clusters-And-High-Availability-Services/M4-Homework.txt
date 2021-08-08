@@ -1,0 +1,19 @@
+Execute script 'M4-Script-Lab-Setup - Part1 - Homework'.ps1
+In Server1 and Server2 go to Server Manager/Manage/Add Roles and Features and install Network Load Balancing future.
+In Server1 go to Server Manager/Tools/Network Load Balancing Manager tool
+Cluster/New
+Host:server1/Connect
+Select 'NLB Adapter'
+New Cluster : Cluster IP Address/Add 192.168.78.99 and 255.255.255.0
+Full Internet name:web.wsaa.lab 
+Cluster operation mode:unicast 
+Port Rules/Edit/From:80 To:80 Protocols:TCP Filtering mode:Multiple host Affinity:None
+web.wsaa.lab/Add Host To Cluster/server2/'NLB Adapter'
+In Server1 and Server2 go to Server Manager/Manage/Add Roles and Features and install Web Server(IIS) server role with  default values.
+In Server1 PowerShell '<h1>Hello world! (SERVER1)</h1>'|Out-File C:\inetpub\wwwroot\index.html
+In Server2 PowerShell '<h1>Hello world! (SERVER2)</h1>'|Out-File C:\inetpub\wwwroot\index.html
+In DC/Server Manager/Tools/DNS/DC/Forward Lookup Zones/WSAA.LAB/New Host (A or AAAA) Name:web IP address:192.168.99.99
+                                                               /New Alias (CNAME) 'Alias name':www 'Fully qualified domain name (FQDN)':web.wsaaa.lab
+
+
+
