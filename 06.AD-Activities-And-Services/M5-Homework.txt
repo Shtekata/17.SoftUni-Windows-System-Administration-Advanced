@@ -1,0 +1,21 @@
+Execute script 'M5-Homework.ps1'
+Go to Server1 and Server2 Server Manager/Manage/Add Roles and Features/Next/Next/Next/
+Select DHCP Server/Add Features/Next/Next/Install
+Click on yellow sign 'Attention'/Complete DHCP configuration/Next/Commit/Close
+Go to Server1 Tools/DHCP/IPv4/New Scope/Next/
+In name field type 'Scope1'/Next
+Start IP address: 192.168.99.101
+End IP address: 192.168.99.200/Next/Next/Next/Next/
+IP address: 192.168.99.33 /Add/Next/Next/Next/Next/Finish/
+Go to Server1 Tools/DHCP/IPv4/New Scope/Next/
+In name field type 'Scope2'/Next
+Start IP address: 192.168.89.101
+End IP address: 192.168.89.200/Next/Next/Next/Next/
+IP address: 192.168.89.33 /Add/Next/Next/Next/Next/Finish/
+Go to Server1/DHCP/IPv4/Configure Failover/Next/Add/This authorized DHCP server/server2.wsaa.lab/OK/Next/
+Relationship Name: server1-server2
+Shared Secret: Password1/Next/Finish/Close/
+
+
+
+
